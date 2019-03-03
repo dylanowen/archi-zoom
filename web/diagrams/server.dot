@@ -1,0 +1,21 @@
+digraph "Server" {
+    node [shape=box style=filled fontname="Fira Code" fontsize=10]
+    edge [fontname="Fira Code" fontsize=10]
+    node [colorscheme=set312 shape=plaintext]
+
+    subgraph cluster_container {
+        label = "Container"
+
+        node [fillcolor=5]
+
+        listen -> GET
+        listen -> POST
+
+        GET -> ReadUser
+        POST -> ReadUser
+        POST -> WriteUser
+    }
+
+    ReadUser -> reply
+    WriteUser -> reply
+}

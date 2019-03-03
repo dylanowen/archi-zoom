@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Graph Assembly</title>
+    <style type="text/css"><!--
+    html, body, #main {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    #main {
+        display: flex;
+        /*grid-template-columns: repeat(2, 1fr);*/
+        padding: 0;
+    }
+
+    #left_main {
+        grid-column: 1;
+    }
+
+    #right_main {
+        grid-column: 2;
+        flex-basis: 200px;
+    }
+
+    #svg_view {
+        grid-column: 1;
+        width: 100%;
+        height: 100%;
+        cursor: move;
+        font-family: monospace;
+        font-size: 14px;
+    }
+
+    #svg_view .title-container rect {
+        fill: #005cb9;
+        stroke-width: 2;
+        stroke: #0084b9;
+    }
+
+    #svg_view .title-container text {
+        fill: white;
+    }
+
+    #svg_view .field-container rect {
+        fill: white;
+        stroke-width: 2;
+        stroke: #0084b9;
+    }
+
+    #svg_view .field-container text {
+        fill: #005cb9;
+    }
+
+    .hidden {
+        visibility: hidden;
+    }
+
+    --></style>
+    <script src="js/utils.js"></script>
+</head>
+<body>
+<script>
+    LibReady('archizoom')
+        .then((lib) => {
+            const start = performance.now();
+            const next = lib.init();
+            const end = performance.now();
+            console.log('Run time: ' + (end - start) + 'ms');
+
+            return next;
+        })
+        .catch((e) => console.error(e));
+
+    // ).then((lib) => {
+    //
+    //
+    //
+    //     const input = document.getElementById('input_area');
+    //
+    //     //lib.run(input.value);
+    // })
+</script>
+<!--<canvas id="graph_view" width="640" height="480"></canvas>-->
+<div id="main">
+    <img src="diagrams/root.svg" data-archizoom="true" width="800" height="600"/>
+</div>
+
+</body>
+</html>

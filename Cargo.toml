@@ -1,0 +1,64 @@
+[package]
+name = "archizoom"
+version = "0.0.1"
+authors = ["Dylan"]
+edition = "2018"
+
+[lib]
+name = "archizoom"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+futures = "0.1"
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.3"
+console_error_panic_hook = "0.1.5"
+
+# https://rustwasm.github.io/wasm-bindgen/api/web_sys/
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  'Window',
+  'Document',
+  'console',
+
+  'Element',
+  'Node',
+  'NodeList',
+  'EventListener',
+  'EventTarget',
+
+  'Event',
+  'PointerEvent',
+  'MouseEvent',
+  'TouchEvent',
+    'TouchList',
+    'Touch',
+
+  'HtmlDivElement',
+  'HtmlImageElement',
+#  'HtmlTextAreaElement',
+
+  'SvgsvgElement',
+     'SvgGraphicsElement',
+     'SvgAnimatedRect',
+     'SvgRect',
+     'SvgElement',
+#    'SvgRectElement',
+     'SvgPoint',
+     'SvgMatrix',
+#    'SvggElement',
+#    'SvgTextContentElement',
+#    'SvgTextElement',
+#    'SvgTransformList',
+#    'SvgAnimatedTransformList',
+#    'DomRect',
+
+  'Request',
+    'RequestInit',
+    'RequestMode',
+    'Response',
+
+  'Performance',
+]

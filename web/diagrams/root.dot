@@ -1,0 +1,24 @@
+digraph "Root" {
+    node [shape=box style=filled fontname="Fira Code" fontsize=10]
+    edge [fontname="Fira Code" fontsize=10]
+    node [colorscheme=set312 shape=plaintext]
+
+    subgraph main {
+        node [fillcolor=5];
+
+        Server [label="\N\<T\>" href="server.svg#archizoom:link"]
+    }
+
+    subgraph branch {
+        node [fillcolor=6];
+
+        Database [label="\N\<T\>"]
+
+        UserTable
+    }
+
+    Server -> Database -> UserTable
+    Database -> Database [href="server.svg"]
+    wut
+    wut -> wut
+}
