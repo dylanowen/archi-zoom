@@ -11,10 +11,6 @@ use crate::js_utils::*;
 
 mod svg_view_controller;
 
-//pub fn new_svg() -> Result<(), JsValue> {
-//
-//}
-
 #[wasm_bindgen]
 pub struct ArchiZoom {
     svg: SvgsvgElement,
@@ -24,7 +20,7 @@ pub struct ArchiZoom {
 
 impl ArchiZoom {
     pub fn new(svg: SvgsvgElement) -> Result<ArchiZoom, JsValue> {
-        svg.set_attribute("viewBox", "0 0 200 200");
+        svg.set_attribute("viewBox", "0 0 200 200")?;
 
         let archizoom = ArchiZoom {
             _view_controller: SvgViewController::new(&svg),

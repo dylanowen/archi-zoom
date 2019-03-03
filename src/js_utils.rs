@@ -1,11 +1,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use js_sys::Date;
 use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{console, Document, Element, EventTarget, Node, NodeList, Performance, Window};
+use web_sys::{console, Document, Element, EventTarget, NodeList, Window};
 
 pub trait EnhancedDocument {
     fn safe_get_by_id<T: JsCast>(&self, id: &str) -> Option<T>;
@@ -85,7 +84,7 @@ impl EnhancedNodeList for NodeList {
         let mut valid_nodes = vec![];
 
         for i in 0..self.length() {
-            match self.get(0).and_then(|node| node.dyn_into::<T>().ok()) {
+            match self.get(i).and_then(|node| node.dyn_into::<T>().ok()) {
                 Some(t) => valid_nodes.push(t),
                 None => (),
             }
@@ -180,25 +179,25 @@ impl<T: ?Sized> Drop for SelfClosureImpl<T> {
     }
 }
 
-pub fn benchmark<O, F>(description: &str, mut f: F) -> O
-where
-    F: FnMut() -> O,
-{
-    match window().performance() {
-        Some(perf) => {
-            let start = perf.now();
-            let result = f();
-            let end = perf.now();
-            console::log_1(&format!("{}: {}ms", description, (end - start)).into());
-
-            result
-        }
-        None => {
-            console::warn_1(&"No performance object available".into());
-            f()
-        }
-    }
-}
+//pub fn benchmark<O, F>(description: &str, mut f: F) -> O
+//where
+//    F: FnMut() -> O,
+//{
+//    match window().performance() {
+//        Some(perf) => {
+//            let start = perf.now();
+//            let result = f();
+//            let end = perf.now();
+//            console::log_1(&format!("{}: {}ms", description, (end - start)).into());
+//
+//            result
+//        }
+//        None => {
+//            console::warn_1(&"No performance object available".into());
+//            f()
+//        }
+//    }
+//}
 
 pub fn window() -> Window {
     web_sys::window().expect("Missing window")

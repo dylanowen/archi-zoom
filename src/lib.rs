@@ -1,8 +1,4 @@
-use std::cell::RefCell;
-use std::mem;
-use std::rc::Rc;
-
-use futures::{future, Future};
+use futures::Future;
 //use wasm_bindgen::convert::ReturnWasmAbi;
 use js_sys::{Array, Promise};
 use wasm_bindgen::prelude::*;
@@ -10,8 +6,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::future_to_promise;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    console, Document, Element, HtmlDivElement, HtmlImageElement, Request, RequestInit,
-    RequestMode, Response, SvgsvgElement,
+    console, HtmlDivElement, HtmlImageElement, Request, RequestInit, Response, SvgsvgElement,
 };
 
 use js_utils::*;
@@ -74,6 +69,12 @@ fn new_archizoom(img: HtmlImageElement) -> Result<Promise, JsValue> {
                 .safe_create_element::<HtmlDivElement>("div")
                 .unwrap();
 
+            container
+                .style()
+                .set_property(&"height", &format!("{:?}px", img.offset_height()))?;
+            container
+                .style()
+                .set_property(&"width", &format!("{:?}px", img.offset_width()))?;
             container.set_inner_html(&text.unwrap());
 
             // find the embedded SvgsvgElement
@@ -81,6 +82,9 @@ fn new_archizoom(img: HtmlImageElement) -> Result<Promise, JsValue> {
                 .first_element_child()
                 .ok_or::<JsValue>("The image element must have a parent".into())
                 .and_then(|child| child.dyn_into::<SvgsvgElement>().map_err(|e| e.into()))?;
+
+            svg.style().set_property(&"height", &"100%")?;
+            svg.style().set_property(&"width", &"100%")?;
 
             ArchiZoom::new(svg).and_then(|az| {
                 parent

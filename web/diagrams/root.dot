@@ -19,6 +19,4 @@ digraph "Root" {
 
     Server -> Database -> UserTable
     Database -> Database [href="server.svg"]
-    wut
-    wut -> wut
 }

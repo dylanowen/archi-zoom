@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use web_sys::{Event, MouseEvent, PointerEvent, SvgPoint, SvgsvgElement, TouchEvent};
+use web_sys::{
+    console, Event, MouseEvent, PointerEvent, SvgPoint, SvgsvgElement, TouchEvent, WheelEvent,
+};
 
 use crate::js_utils::{SafeSelfClosure, SelfClosure};
 
@@ -27,6 +29,7 @@ impl SvgViewController {
         }));
 
         register_drag_events(&view_controller);
+        register_scroll_events(&view_controller);
 
         view_controller
     }
@@ -57,6 +60,17 @@ impl SvgViewController {
 
     fn on_pointer_up(&mut self, _event: Event) {
         self.is_pointer_down = false;
+    }
+
+    fn on_scroll(&mut self, delta_y: f32, event: Event) {
+        event.prevent_default();
+
+        console::log_1(&delta_y.to_string().into());
+
+        if let Some(view_box) = self.svg.view_box().base_val() {
+            view_box.set_width(view_box.width() + delta_y);
+            view_box.set_height(view_box.height() + delta_y);
+        }
     }
 
     fn get_point(&mut self, position: &Position) -> Option<SvgPoint> {
@@ -200,4 +214,18 @@ fn register_drag_events(svg_ref: &Rc<RefCell<SvgViewController>>) {
     };
 
     svg_ref.borrow_mut().events.append(&mut events);
+}
+
+fn register_scroll_events(svg_ref: &Rc<RefCell<SvgViewController>>) {
+    let event = svg_ref.new_self_closure(
+        &"wheel",
+        &svg_ref.borrow().svg,
+        |svg_ref, event: WheelEvent| {
+            svg_ref
+                .borrow_mut()
+                .on_scroll(event.delta_y() as f32, event.into());
+        },
+    );
+
+    svg_ref.borrow_mut().events.push(event);
 }

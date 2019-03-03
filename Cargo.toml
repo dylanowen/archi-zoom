@@ -35,7 +35,11 @@ features = [
   'TouchEvent',
     'TouchList',
     'Touch',
+  'WheelEvent',
 
+  'CssStyleDeclaration',
+
+  'HtmlElement',
   'HtmlDivElement',
   'HtmlImageElement',
 #  'HtmlTextAreaElement',
