@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Graph Assembly</title>
+    <title>ArchiZoom</title>
     <style type="text/css"><!--
     .hidden {
         visibility: hidden;
@@ -18,10 +18,10 @@
             const start = performance.now();
             const next = lib.init();
             const end = performance.now();
-            console.log('Run time: ' + (end - start) + 'ms');
-
+            console.log('Startup time: ' + (end - start) + 'ms');
             return next;
         })
+        //.then(archizoom => archizoom[0].free())
         .catch((e) => console.error(e));
 
     // ).then((lib) => {
@@ -33,6 +33,8 @@
     //     //lib.run(input.value);
     // })
 </script>
-    <img src="diagrams/root.svg" data-archizoom="true" width="800" height="600"/>
+<div style="border: black solid 1px; display: inline-block;">
+    <img src="diagrams/root.svg" data-archizoom="true" width="600" height="600"/>
+</div>
 </body>
 </html>

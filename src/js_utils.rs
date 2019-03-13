@@ -1,9 +1,6 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::convert::FromWasmAbi;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{console, Document, Element, EventTarget, NodeList, Window};
 
 pub trait EnhancedDocument {
@@ -94,70 +91,21 @@ impl EnhancedNodeList for NodeList {
     }
 }
 
-pub trait SafeSelfClosure {
-    type Inner;
-
-    fn new_self_closure<C, E>(
-        &self,
-        _type: &str,
-        event_target: &EventTarget,
-        closure: C,
-    ) -> Box<dyn SelfClosure>
-    where
-        C: Fn(Rc<Self::Inner>, E) + 'static,
-        E: FromWasmAbi + 'static;
+pub trait JsEventListener {
+    fn remove(&mut self);
 }
 
-impl<V> SafeSelfClosure for Rc<RefCell<V>>
-where
-    V: 'static,
-{
-    type Inner = RefCell<V>;
-
-    fn new_self_closure<C, E>(
-        &self,
-        _type: &str,
-        event_target: &EventTarget,
-        closure: C,
-    ) -> Box<dyn SelfClosure>
-    where
-        C: Fn(Rc<Self::Inner>, E) + 'static,
-        E: FromWasmAbi + 'static,
-    {
-        let weak_self = Rc::downgrade(self);
-
-        let closure = Closure::wrap(Box::new(move |event| match weak_self.upgrade() {
-            Some(real_self) => closure(real_self, event),
-            None => (),
-        }) as Box<Fn(E)>);
-
-        match event_target.add_event_listener_with_callback(_type, closure.as_ref().unchecked_ref())
-        {
-            Ok(_) => (),
-            Err(error) => console::error_2(&"Failed to add event handler".into(), &error),
-        }
-
-        Box::new(SelfClosureImpl {
-            _type: _type.to_string(),
-            closure: Some(closure),
-        })
-    }
-}
-
-pub trait SelfClosure {
-    fn remove(&mut self, event_target: &EventTarget);
-}
-
-struct SelfClosureImpl<T: ?Sized> {
-    _type: String,
+struct JsEventListenerImpl<T: ?Sized> {
+    event_type: String,
+    target: EventTarget,
     closure: Option<Closure<T>>,
 }
 
-impl<T: ?Sized> SelfClosure for SelfClosureImpl<T> {
-    fn remove(&mut self, event_target: &EventTarget) {
+impl<T: ?Sized> JsEventListener for JsEventListenerImpl<T> {
+    fn remove(&mut self) {
         if let Some(ref closure) = self.closure {
-            match event_target.remove_event_listener_with_callback(
-                self._type.as_str(),
+            match self.target.remove_event_listener_with_callback(
+                &self.event_type,
                 closure.as_ref().unchecked_ref(),
             ) {
                 Ok(_) => (),
@@ -169,35 +117,46 @@ impl<T: ?Sized> SelfClosure for SelfClosureImpl<T> {
     }
 }
 
-impl<T: ?Sized> Drop for SelfClosureImpl<T> {
+impl<T: ?Sized> Drop for JsEventListenerImpl<T> {
     fn drop(&mut self) {
-        console::log_1(&"dropping".into());
-
-        if self.closure.is_some() {
-            console::error_1(&"Dropping a registered closure: The event will throw an exception and can't be cleaned up".into());
-        }
+        console::log_1(&"Dropping JsEventListener".into());
+        self.remove();
     }
 }
 
-//pub fn benchmark<O, F>(description: &str, mut f: F) -> O
-//where
-//    F: FnMut() -> O,
-//{
-//    match window().performance() {
-//        Some(perf) => {
-//            let start = perf.now();
-//            let result = f();
-//            let end = perf.now();
-//            console::log_1(&format!("{}: {}ms", description, (end - start)).into());
-//
-//            result
-//        }
-//        None => {
-//            console::warn_1(&"No performance object available".into());
-//            f()
-//        }
-//    }
-//}
+pub trait EnhancedEventTarget {
+    fn new_event_listener<C, E>(
+        &self,
+        event_type: &str,
+        callback: C,
+    ) -> Result<Box<JsEventListener>, JsValue>
+    where
+        C: Fn(E) + 'static,
+        E: FromWasmAbi + 'static;
+}
+
+impl EnhancedEventTarget for EventTarget {
+    fn new_event_listener<C, E>(
+        &self,
+        event_type: &str,
+        callback: C,
+    ) -> Result<Box<JsEventListener>, JsValue>
+    where
+        C: Fn(E) + 'static,
+        E: FromWasmAbi + 'static,
+    {
+        let closure = Closure::wrap(Box::new(callback) as Box<Fn(E)>);
+
+        self.add_event_listener_with_callback(event_type, closure.as_ref().unchecked_ref())
+            .map(|_| -> Box<JsEventListener> {
+                Box::new(JsEventListenerImpl {
+                    event_type: event_type.to_string(),
+                    target: self.clone(),
+                    closure: Some(closure),
+                })
+            })
+    }
+}
 
 pub fn window() -> Window {
     web_sys::window().expect("Missing window")

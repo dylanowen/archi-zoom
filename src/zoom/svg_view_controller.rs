@@ -1,11 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use web_sys::{
-    console, Event, MouseEvent, PointerEvent, SvgPoint, SvgsvgElement, TouchEvent, WheelEvent,
-};
+use wasm_bindgen::convert::FromWasmAbi;
+use wasm_bindgen::JsValue;
+use web_sys::{Event, MouseEvent, PointerEvent, SvgPoint, SvgsvgElement, TouchEvent, WheelEvent};
 
-use crate::js_utils::{SafeSelfClosure, SelfClosure};
+use crate::events::{EventListener, EventSource};
+use crate::js_utils::{EnhancedEventTarget, JsEventListener};
+use crate::zoom::matrix::{Point2D, Rect};
 
 pub struct SvgViewController {
     svg: SvgsvgElement,
@@ -13,28 +15,35 @@ pub struct SvgViewController {
     is_pointer_down: bool,
     pointer_origin: SvgPoint,
 
-    events: Vec<Box<SelfClosure>>,
+    listeners: Vec<Box<EventListener<ViewUpdateEvent>>>,
+    event_listeners: Vec<Box<JsEventListener>>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-struct Position(i32, i32);
+#[derive(Debug)]
+pub struct ViewUpdateEvent {
+    /// The coordinates in Svg Viewport Coordinates in pixels
+    viewport: Rect,
+}
+
+static ZOOM_FACTOR: f32 = 0.003;
 
 impl SvgViewController {
-    pub fn new(svg: &SvgsvgElement) -> Rc<RefCell<SvgViewController>> {
+    pub fn new(svg: &SvgsvgElement) -> Result<Rc<RefCell<SvgViewController>>, JsValue> {
         let view_controller = Rc::new(RefCell::new(SvgViewController {
             pointer_origin: svg.create_svg_point(),
             svg: svg.clone(),
             is_pointer_down: false,
-            events: vec![],
+            listeners: vec![],
+            event_listeners: vec![],
         }));
 
-        register_drag_events(&view_controller);
-        register_scroll_events(&view_controller);
+        get_drag_events(&view_controller)?;
+        register_scroll_events(&view_controller)?;
 
-        view_controller
+        Ok(view_controller)
     }
 
-    fn on_pointer_down(&mut self, position: Position, _event: Event) {
+    fn on_pointer_down(&mut self, position: Point2D, _event: Event) {
         if let Some(point) = self.get_point(&position) {
             self.is_pointer_down = true;
 
@@ -42,7 +51,7 @@ impl SvgViewController {
         }
     }
 
-    fn on_pointer_move(&mut self, position: Position, event: Event) {
+    fn on_pointer_move(&self, position: Point2D, event: Event) {
         if self.is_pointer_down {
             event.prevent_default();
 
@@ -53,6 +62,8 @@ impl SvgViewController {
 
                     view_box.set_x(view_box.x() - delta_x);
                     view_box.set_y(view_box.y() - delta_y);
+
+                    self.dispatch_event();
                 }
             }
         }
@@ -62,22 +73,44 @@ impl SvgViewController {
         self.is_pointer_down = false;
     }
 
-    fn on_scroll(&mut self, delta_y: f32, event: Event) {
+    fn on_scroll(&self, delta_y: f32, _position: Point2D, event: Event) {
         event.prevent_default();
 
-        console::log_1(&delta_y.to_string().into());
-
         if let Some(view_box) = self.svg.view_box().base_val() {
-            view_box.set_width(view_box.width() + delta_y);
-            view_box.set_height(view_box.height() + delta_y);
+            let delta_width = view_box.width() * (delta_y * ZOOM_FACTOR);
+            let delta_height = view_box.height() * (delta_y * ZOOM_FACTOR);
+
+            view_box.set_width(view_box.width() + delta_width);
+            view_box.set_height(view_box.height() + delta_height);
+            view_box.set_x(view_box.x() - (delta_width / 2.0));
+            view_box.set_y(view_box.y() - (delta_height / 2.0));
+
+            self.dispatch_event();
         }
     }
 
-    fn get_point(&mut self, position: &Position) -> Option<SvgPoint> {
+    fn dispatch_event(&self) {
+        let client_rect = self.svg.get_bounding_client_rect();
+        let viewport = Rect::new(
+            Point2D { x: 0.0, y: 0.0 },
+            Point2D {
+                x: client_rect.width() as f32,
+                y: client_rect.height() as f32,
+            },
+        );
+
+        let event = ViewUpdateEvent { viewport };
+
+        for listener in self.listeners.iter() {
+            listener.receive(&event);
+        }
+    }
+
+    fn get_point(&self, position: &Point2D) -> Option<SvgPoint> {
         let point = self.svg.create_svg_point();
 
-        point.set_x(position.0 as f32);
-        point.set_y(position.1 as f32);
+        point.set_x(position.x);
+        point.set_y(position.y);
 
         if let Some(svg_matrix) = self.svg.get_screen_ctm() {
             if let Ok(inverted_svg_matrix) = svg_matrix.inverse() {
@@ -89,143 +122,178 @@ impl SvgViewController {
     }
 }
 
-impl Drop for SvgViewController {
-    fn drop(&mut self) {
-        for closure in self.events.iter_mut() {
-            closure.remove(&self.svg)
-        }
+impl EventSource<ViewUpdateEvent> for SvgViewController {
+    fn register_listener<T: EventListener<ViewUpdateEvent> + 'static>(&mut self, callback: T) {
+        self.listeners.push(Box::new(callback));
     }
 }
 
-fn register_drag_events(svg_ref: &Rc<RefCell<SvgViewController>>) {
+impl ViewUpdateEvent {
+    #[inline]
+    pub fn viewport(&self) -> &Rect {
+        &self.viewport
+    }
+}
+
+fn get_drag_events(view_controller_ref: &Rc<RefCell<SvgViewController>>) -> Result<(), JsValue> {
     // check if pointer events are supported
     let mut events = match PointerEvent::new("pointerdown") {
         Ok(_) => {
             // pointers are supported
             vec![
-                svg_ref.new_self_closure(
+                add_svg_event(
+                    view_controller_ref,
                     &"pointerdown",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: PointerEvent| {
-                        svg_ref.borrow_mut().on_pointer_down(
-                            Position(event.client_x(), event.client_y()),
+                    |controller_ref, event: PointerEvent| {
+                        controller_ref.borrow_mut().on_pointer_down(
+                            Point2D::new(event.client_x() as f32, event.client_y() as f32),
                             event.into(),
                         );
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"pointermove",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: PointerEvent| {
-                        svg_ref.borrow_mut().on_pointer_move(
-                            Position(event.client_x(), event.client_y()),
+                    |controller_ref, event: PointerEvent| {
+                        controller_ref.borrow().on_pointer_move(
+                            Point2D::new(event.client_x() as f32, event.client_y() as f32),
                             event.into(),
                         );
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"pointerup",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: PointerEvent| {
-                        svg_ref.borrow_mut().on_pointer_up(event.into());
+                    |controller_ref, event: PointerEvent| {
+                        controller_ref.borrow_mut().on_pointer_up(event.into());
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"pointerleave",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: PointerEvent| {
-                        svg_ref.borrow_mut().on_pointer_up(event.into());
+                    |controller_ref, event: PointerEvent| {
+                        controller_ref.borrow_mut().on_pointer_up(event.into());
                     },
-                ),
+                )?,
             ]
         }
         Err(_) => {
-            fn touch_position(event: &TouchEvent) -> Position {
+            fn touch_position(event: &TouchEvent) -> Point2D {
                 if let Some(ref touch) = event.touches().get(0) {
-                    Position(touch.client_x(), touch.client_y())
+                    Point2D::new(touch.client_x() as f32, touch.client_y() as f32)
                 } else {
-                    Position(0, 0)
+                    Point2D::new(0.0, 0.0)
                 }
             }
 
             // no pointer support, so use something else
             vec![
-                svg_ref.new_self_closure(
+                add_svg_event(
+                    view_controller_ref,
                     &"mousedown",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: MouseEvent| {
-                        svg_ref.borrow_mut().on_pointer_down(
-                            Position(event.client_x(), event.client_y()),
+                    |controller_ref, event: MouseEvent| {
+                        controller_ref.borrow_mut().on_pointer_down(
+                            Point2D::new(event.client_x() as f32, event.client_y() as f32),
                             event.into(),
                         );
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"mousemove",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: MouseEvent| {
-                        svg_ref.borrow_mut().on_pointer_move(
-                            Position(event.client_x(), event.client_y()),
+                    |controller_ref, event: MouseEvent| {
+                        controller_ref.borrow().on_pointer_move(
+                            Point2D::new(event.client_x() as f32, event.client_y() as f32),
                             event.into(),
                         );
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"mouseup",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: MouseEvent| {
-                        svg_ref.borrow_mut().on_pointer_up(event.into());
+                    |controller_ref, event: MouseEvent| {
+                        controller_ref.borrow_mut().on_pointer_up(event.into());
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"mouseleave",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: MouseEvent| {
-                        svg_ref.borrow_mut().on_pointer_up(event.into());
+                    |controller_ref, event: MouseEvent| {
+                        controller_ref.borrow_mut().on_pointer_up(event.into());
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"touchstart",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: TouchEvent| {
-                        svg_ref
+                    |controller_ref, event: TouchEvent| {
+                        controller_ref
                             .borrow_mut()
                             .on_pointer_down(touch_position(&event), event.into());
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"touchmove",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: TouchEvent| {
-                        svg_ref
-                            .borrow_mut()
+                    |controller_ref, event: TouchEvent| {
+                        controller_ref
+                            .borrow()
                             .on_pointer_move(touch_position(&event), event.into());
                     },
-                ),
-                svg_ref.new_self_closure(
+                )?,
+                add_svg_event(
+                    view_controller_ref,
                     &"touchend",
-                    &svg_ref.borrow().svg,
-                    |svg_ref, event: TouchEvent| {
-                        svg_ref.borrow_mut().on_pointer_up(event.into());
+                    |controller_ref, event: TouchEvent| {
+                        controller_ref.borrow_mut().on_pointer_up(event.into());
                     },
-                ),
+                )?,
             ]
         }
     };
 
-    svg_ref.borrow_mut().events.append(&mut events);
+    view_controller_ref
+        .borrow_mut()
+        .event_listeners
+        .append(&mut events);
+
+    Ok(())
 }
 
-fn register_scroll_events(svg_ref: &Rc<RefCell<SvgViewController>>) {
-    let event = svg_ref.new_self_closure(
+fn register_scroll_events(
+    view_controller_ref: &Rc<RefCell<SvgViewController>>,
+) -> Result<(), JsValue> {
+    let event = add_svg_event(
+        view_controller_ref,
         &"wheel",
-        &svg_ref.borrow().svg,
-        |svg_ref, event: WheelEvent| {
-            svg_ref
-                .borrow_mut()
-                .on_scroll(event.delta_y() as f32, event.into());
+        |controller_ref, event: WheelEvent| {
+            controller_ref.borrow().on_scroll(
+                event.delta_y() as f32,
+                Point2D::new(event.client_x() as f32, event.client_y() as f32),
+                event.into(),
+            );
         },
-    );
+    )?;
 
-    svg_ref.borrow_mut().events.push(event);
+    view_controller_ref.borrow_mut().event_listeners.push(event);
+
+    Ok(())
+}
+
+fn add_svg_event<C, E>(
+    controller_ref: &Rc<RefCell<SvgViewController>>,
+    event_type: &str,
+    callback: C,
+) -> Result<Box<JsEventListener>, JsValue>
+where
+    C: Fn(Rc<RefCell<SvgViewController>>, E) + 'static,
+    E: FromWasmAbi + 'static,
+{
+    let svg = &controller_ref.borrow().svg;
+
+    let weak_ref = Rc::downgrade(controller_ref);
+    svg.new_event_listener(event_type, move |event: E| {
+        if let Some(real_ref) = weak_ref.upgrade() {
+            callback(real_ref, event)
+        }
+    })
 }

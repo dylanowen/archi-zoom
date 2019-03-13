@@ -44,11 +44,15 @@ features = [
   'HtmlImageElement',
 #  'HtmlTextAreaElement',
 
+  'DomRect',
+
   'SvgsvgElement',
      'SvgGraphicsElement',
      'SvgAnimatedRect',
      'SvgRect',
      'SvgElement',
+     'SvgaElement',
+     'SvgAnimatedString',
 #    'SvgRectElement',
      'SvgPoint',
      'SvgMatrix',

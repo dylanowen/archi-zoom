@@ -1,5 +1,7 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use futures::Future;
-//use wasm_bindgen::convert::ReturnWasmAbi;
 use js_sys::{Array, Promise};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -12,16 +14,24 @@ use web_sys::{
 use js_utils::*;
 use zoom::*;
 
+mod events;
 mod js_utils;
 mod zoom;
+
+#[wasm_bindgen]
+pub struct ArchiZoomContainer {
+    _value: Rc<RefCell<ArchiZoom>>,
+}
+
+static PREFIX_ALIAS: &str = "archizoom";
 
 #[wasm_bindgen]
 pub fn init() -> Result<Promise, JsValue> {
     console_error_panic_hook::set_once();
 
-    // grab all the
+    // grab all the images with our marking attribute
     let zoom_nodes = document()
-        .query_selector_all("[data-archizoom]")?
+        .query_selector_all(&format!("[data-{}]", PREFIX_ALIAS))?
         .safe_filter::<HtmlImageElement>();
 
     let result_futures = Array::new();
@@ -89,7 +99,7 @@ fn new_archizoom(img: HtmlImageElement) -> Result<Promise, JsValue> {
             ArchiZoom::new(svg).and_then(|az| {
                 parent
                     .replace_child(&container, &img)
-                    .map(|_| JsValue::from(az))
+                    .map(|_| JsValue::from(ArchiZoomContainer { _value: az }))
             })
         });
 
